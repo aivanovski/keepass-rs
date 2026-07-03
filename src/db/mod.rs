@@ -75,7 +75,34 @@ pub use crate::db::otp::{TOTPAlgorithm, TOTPError, TOTP};
 mod database_tests {
     use std::fs::File;
 
-    use crate::{db::DatabaseOpenError, Database, DatabaseKey};
+    use uuid::Uuid;
+
+    use crate::{
+        config::DatabaseConfig,
+        db::{DatabaseOpenError, GroupId},
+        Database, DatabaseKey,
+    };
+
+    #[test]
+    fn test_new_with_root_id_uses_provided_root_id() {
+        let root_id = GroupId::from_uuid(Uuid::parse_str("01234567-89ab-cdef-0123-456789abcdef").unwrap());
+
+        let db = Database::new_with_root_id(root_id);
+
+        assert_eq!(db.root().id(), root_id);
+        assert_eq!(db.config, DatabaseConfig::default());
+    }
+
+    #[test]
+    fn test_with_config_and_root_id_uses_provided_root_id() {
+        let root_id = GroupId::from_uuid(Uuid::parse_str("fedcba98-7654-3210-fedc-ba9876543210").unwrap());
+        let config = DatabaseConfig::default();
+
+        let db = Database::with_config_and_root_id(config.clone(), root_id);
+
+        assert_eq!(db.root().id(), root_id);
+        assert_eq!(db.config, config);
+    }
 
     #[test]
     fn test_xml() -> Result<(), DatabaseOpenError> {

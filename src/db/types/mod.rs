@@ -70,32 +70,26 @@ impl Database {
         Self::new_with_root_id(GroupId::new())
     }
 
+    /// Create a new database with the given root group ID and default configuration.
+    ///
+    /// This is useful when the database structure needs to be reproduced with stable
+    /// identifiers, for example when replicating an existing database.
+    pub fn new_with_root_id(root_id: GroupId) -> Self {
+        Self::with_config_and_root_id(DatabaseConfig::default(), root_id)
+    }
+
     /// Create a new database with the given configuration and a single root group.
     ///
     /// The root group will be assigned a new random UUID.
     pub fn with_config(config: DatabaseConfig) -> Self {
-        Self::with_data(config, GroupId::new())
+        Self::with_config_and_root_id(config, GroupId::new())
     }
 
-    pub(crate) fn new_with_root_id(root_id: GroupId) -> Self {
-        let root = Group::with_id(root_id, None);
-
-        let mut groups = HashMap::new();
-        groups.insert(root_id, root);
-
-        Database {
-            config: DatabaseConfig::default(),
-            meta: Meta::default(),
-            root: root_id,
-            attachments: HashMap::new(),
-            custom_icons: HashMap::new(),
-            entries: HashMap::new(),
-            groups,
-            deleted_objects: HashMap::new(),
-        }
-    }
-
-    pub(crate) fn with_data(config: DatabaseConfig, root_id: GroupId) -> Self {
+    /// Create a new database with the given configuration and root group ID.
+    ///
+    /// This is useful when the database structure needs to be reproduced with stable
+    /// identifiers, for example when replicating an existing database.
+    pub fn with_config_and_root_id(config: DatabaseConfig, root_id: GroupId) -> Self {
         let root = Group::with_id(root_id, None);
 
         let mut groups = HashMap::new();

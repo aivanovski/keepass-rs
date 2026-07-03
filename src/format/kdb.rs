@@ -462,7 +462,7 @@ pub(crate) fn parse_kdb(data: &[u8], db_key: &DatabaseKey) -> Result<Database, D
         public_custom_data: Default::default(),
     };
 
-    let mut db = Database::with_data(config, GroupId::new());
+    let mut db = Database::with_config_and_root_id(config, GroupId::new());
     db.root_mut().name = String::from("Root");
 
     let mut pos = payload;
