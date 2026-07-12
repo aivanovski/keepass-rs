@@ -3,6 +3,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use indexmap::IndexMap;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -74,10 +75,10 @@ pub struct Group {
     pub(crate) icon: Option<Icon>,
 
     /// The list of child group identifiers
-    pub(crate) groups: HashSet<GroupId>,
+    pub(crate) groups: IndexMap<GroupId, ()>,
 
     /// The list of entry identifiers directly under this group
-    pub(crate) entries: HashSet<EntryId>,
+    pub(crate) entries: IndexMap<EntryId, ()>,
 
     /// The list of time fields for this group
     pub times: Times,
@@ -117,8 +118,8 @@ impl Group {
             notes: None,
             tags: Vec::new(),
             icon: None,
-            groups: HashSet::new(),
-            entries: HashSet::new(),
+            groups: IndexMap::new(),
+            entries: IndexMap::new(),
             times: Times::new(),
             custom_data: HashMap::new(),
             is_expanded: true,
@@ -138,8 +139,8 @@ impl Group {
             notes: None,
             tags: Vec::new(),
             icon: None,
-            groups: HashSet::new(),
-            entries: HashSet::new(),
+            groups: IndexMap::new(),
+            entries: IndexMap::new(),
             times: Times::new(),
             custom_data: HashMap::new(),
             is_expanded: true,
@@ -153,12 +154,12 @@ impl Group {
 
     /// Get an iterator over the IDs of all contained groups
     pub fn group_ids(&self) -> impl Iterator<Item = GroupId> + '_ {
-        self.groups.iter().cloned()
+        self.groups.keys().cloned()
     }
 
     /// Get an iterator over the IDs of all contained entries
     pub fn entry_ids(&self) -> impl Iterator<Item = EntryId> + '_ {
-        self.entries.iter().cloned()
+        self.entries.keys().cloned()
     }
 
     /// Get a reference to the icon of this group, if any
@@ -182,29 +183,29 @@ impl GroupRef<'_> {
     /// Get a contained group by ID
     pub fn group(&self, id: GroupId) -> Option<GroupRef<'_>> {
         self.groups
-            .contains(&id)
+            .contains_key(&id)
             .then(move || GroupRef::new(self.database, id))
     }
 
     /// Get a contained entry by ID
     pub fn entry(&self, id: EntryId) -> Option<EntryRef<'_>> {
         self.entries
-            .contains(&id)
+            .contains_key(&id)
             .then(move || EntryRef::new(self.database, id))
     }
 
     /// Get an iterator over all contained groups
     pub fn groups(&self) -> impl Iterator<Item = GroupRef<'_>> + '_ {
         self.groups
-            .iter()
-            .map(move |id| GroupRef::new(self.database, *id))
+            .keys()
+            .map(move |&id| GroupRef::new(self.database, id))
     }
 
     /// Get an iterator over all contained entries
     pub fn entries(&self) -> impl Iterator<Item = EntryRef<'_>> + '_ {
         self.entries
-            .iter()
-            .map(move |id| EntryRef::new(self.database, *id))
+            .keys()
+            .map(move |&id| EntryRef::new(self.database, id))
     }
 
     /// Find a contained group by name, case-insensitively.
@@ -230,8 +231,9 @@ impl GroupRef<'_> {
                 .groups
                 .get(&current)?
                 .groups
-                .iter()
-                .filter_map(|id| self.database.groups.get(id))
+                .keys()
+                .copied()
+                .filter_map(|id| self.database.groups.get(&id))
                 .find(|g| g.name.eq_ignore_ascii_case(part))?
                 .id;
         }
@@ -296,14 +298,14 @@ impl GroupMut<'_> {
     /// Get a mutable reference to a contained group by ID
     pub fn group_mut(&mut self, id: GroupId) -> Option<GroupMut<'_>> {
         self.groups
-            .contains(&id)
+            .contains_key(&id)
             .then(move || GroupMut::new(self.database, id))
     }
 
     /// Get a mutable reference to a contained entry by ID
     pub fn entry_mut(&mut self, id: EntryId) -> Option<EntryMut<'_>> {
         self.entries
-            .contains(&id)
+            .contains_key(&id)
             .then(move || EntryMut::new(self.database, id))
     }
 
@@ -375,7 +377,7 @@ impl GroupMut<'_> {
         }
 
         let new_entry = Entry::with_id(id, self.id);
-        self.entries.insert(id);
+        self.entries.insert(id, ());
         self.database.entries.insert(id, new_entry);
 
         Ok(EntryMut::new(self.database, id))
@@ -406,7 +408,7 @@ impl GroupMut<'_> {
         }
 
         let new_group = Group::with_id(id, Some(self.id));
-        self.groups.insert(id);
+        self.groups.insert(id, ());
         self.database.groups.insert(id, new_group);
 
         Ok(GroupMut::new(self.database, id))
@@ -463,8 +465,9 @@ impl GroupMut<'_> {
                 .groups
                 .get(&current)?
                 .groups
-                .iter()
-                .filter_map(|id| self.database.groups.get(id))
+                .keys()
+                .copied()
+                .filter_map(|id| self.database.groups.get(&id))
                 .find(|g| g.name.eq_ignore_ascii_case(part))?
                 .id;
         }
@@ -570,12 +573,12 @@ impl GroupMut<'_> {
         // Remove from old parent
         #[allow(clippy::unwrap_used, clippy::missing_panics_doc)] // we checked that old_parent_id exists
         let mut old_parent = self.database.group_mut(old_parent_id).unwrap();
-        old_parent.groups.remove(&self.id);
+        old_parent.groups.shift_remove(&self.id);
 
         // Insert into new parent
         #[allow(clippy::unwrap_used, clippy::missing_panics_doc)] // we checked that new_parent_id exists
         let mut new_parent = self.database.group_mut(new_parent_id).unwrap();
-        new_parent.groups.insert(self.id);
+        new_parent.groups.insert(self.id, ());
 
         // Update parent reference
         self.parent = Some(new_parent_id);
@@ -593,12 +596,12 @@ impl GroupMut<'_> {
         // Remove from parent
         if let Some(parent_id) = self.parent {
             if let Some(mut parent) = self.database.group_mut(parent_id) {
-                parent.groups.remove(&self.id);
+                parent.groups.shift_remove(&self.id);
             }
         }
 
         // Delete entries
-        let entry_ids: Vec<EntryId> = self.entries.iter().cloned().collect();
+        let entry_ids: Vec<EntryId> = self.entries.keys().cloned().collect();
         for entry_id in entry_ids {
             if let Some(entry) = self.database.entry_mut(entry_id) {
                 entry.remove();
@@ -606,7 +609,7 @@ impl GroupMut<'_> {
         }
 
         // Recursively delete child groups
-        let child_group_ids: Vec<GroupId> = self.groups.iter().cloned().collect();
+        let child_group_ids: Vec<GroupId> = self.groups.keys().cloned().collect();
         for child_id in child_group_ids {
             if let Some(child_group) = self.database.group_mut(child_id) {
                 child_group.remove();
@@ -725,12 +728,12 @@ impl GroupTrack<'_> {
         // Remove from parent
         if let Some(parent_id) = self.parent {
             if let Some(mut parent) = self.database.group_mut(parent_id) {
-                parent.groups.remove(&self.id);
+                parent.groups.shift_remove(&self.id);
             }
         }
 
         // Delete entries
-        let entry_ids: Vec<EntryId> = self.entries.iter().cloned().collect();
+        let entry_ids: Vec<EntryId> = self.entries.keys().cloned().collect();
 
         for entry_id in entry_ids {
             if let Some(mut entry) = self.database.entry_mut(entry_id) {
@@ -739,7 +742,7 @@ impl GroupTrack<'_> {
         }
 
         // Recursively delete child groups
-        let child_group_ids: Vec<GroupId> = self.groups.iter().cloned().collect();
+        let child_group_ids: Vec<GroupId> = self.groups.keys().cloned().collect();
         for child_id in child_group_ids {
             if let Some(mut child_group) = self.database.group_mut(child_id) {
                 child_group.track_changes().remove()?;
@@ -959,5 +962,30 @@ mod group_tests {
         let from_group_ctor = GroupId::from_uuid(raw);
         assert_eq!(from_group, from_group_ctor);
         assert_eq!(from_group.uuid(), raw);
+    }
+
+    #[test]
+    fn test_group_child_order_preservation() {
+        use crate::db::Database;
+
+        let mut db = Database::new();
+        let mut root = db.root_mut();
+
+        // Add groups and entries in a specific order
+        let group1_id = root.add_group().id();
+        let entry1_id = root.add_entry().id();
+        let group2_id = root.add_group().id();
+        let entry2_id = root.add_entry().id();
+
+        // Get the root group back and verify order is preserved
+        let root = db.root();
+        let group_ids: Vec<_> = root.group_ids().collect();
+        let entry_ids: Vec<_> = root.entry_ids().collect();
+
+        // Verify order is preserved within groups and entries separately
+        assert_eq!(group_ids[0], group1_id);
+        assert_eq!(group_ids[1], group2_id);
+        assert_eq!(entry_ids[0], entry1_id);
+        assert_eq!(entry_ids[1], entry2_id);
     }
 }

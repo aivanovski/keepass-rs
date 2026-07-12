@@ -586,11 +586,11 @@ impl EntryMut<'_> {
         let previous_parent = self.parent;
 
         let mut parent = self.parent_mut();
-        parent.entries.remove(&my_id);
+        parent.entries.shift_remove(&my_id);
 
         #[allow(clippy::unwrap_used, clippy::missing_panics_doc)] // group existence is checked
         let mut new_parent = self.database.group_mut(group_id).unwrap();
-        new_parent.entries.insert(my_id);
+        new_parent.entries.insert(my_id, ());
         self.parent = group_id;
         self.previous_parent_group = Some(previous_parent);
 
@@ -635,7 +635,7 @@ impl EntryMut<'_> {
             .database
             .group_mut(entry.parent)
             .expect("Parent group not found");
-        parent.entries.remove(&self.id);
+        parent.entries.shift_remove(&self.id);
 
         // Clear any group's last_top_visible_entry that pointed to this entry.
         // This field is a UI hint and should not hold a dangling EntryId.
